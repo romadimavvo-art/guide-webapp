@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #16242f; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    -webkit-user-select: none; user-select: none; touch-action: manipulation;
+  }
+  canvas { display: block; touch-action: manipulation; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<script>
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+
+const W = Math.min(window.innerWidth, 480);
+const H = window.innerHeight;
+const cv = document.getElementById('cv');
+cv.width = W * (window.devicePixelRatio || 1);
+cv.height = H * (window.devicePixelRatio || 1);
+cv.style.width = W + 'px';
+cv.style.height = H + 'px';
+const ctx = cv.getContext('2d');
+const S = window.devicePixelRatio || 1;
+
+// рисуем карточку
+function drawCard() {
+  ctx.save();
+  ctx.scale(S, S);
+  // фон
+  ctx.fillStyle = '#16242f';
+  ctx.fillRect(0, 0, W, H);
+  // карточка
+  const cw = W - 48, ch = Math.min(H * 0.5, 340);
+  const cx = (W - cw) / 2, cy = (H - ch) / 2;
+  ctx.fillStyle = '#1d3342';
+  ctx.fillRect(cx, cy, cw, ch);
+  ctx.strokeStyle = '#ffd9a0';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(cx + 8, cy + 8, cw - 16, ch - 16);
+  // текст
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.font = '800 26px -apple-system, Segoe UI, Arial';
+  ctx.fillText('✅', cx + cw/2, cy + 78);
+  ctx.font = '800 24px -apple-system, Segoe UI, Arial';
+  ctx.fillText('Вы записались на тур!', cx + cw/2, cy + 130);
+  ctx.fillStyle = '#ffd9a0';
+  ctx.font = '600 15px -apple-system, Segoe UI, Arial';
+  ctx.fillText('Мы в дороге — как только', cx + cw/2, cy + 178);
+  ctx.fillText('освободимся, свяжемся с вами.', cx + cw/2, cy + 200);
+  ctx.fillStyle = 'rgba(255,255,255,.75)';
+  ctx.font = '400 13px -apple-system, Segoe UI, Arial';
+  ctx.fillText('Пакуйте хорошее настроение 🎒', cx + cw/2, cy + 244);
+  ctx.fillStyle = 'rgba(255,255,255,.45)';
+  ctx.font = '400 12px -apple-system, Segoe UI, Arial';
+  ctx.fillText('нажми, чтобы продолжить', cx + cw/2, cy + ch - 36);
+  ctx.restore();
+}
+
+// собираем частицы из пикселей карточки
+function collectParticles() {
+  const img = ctx.getImageData(0, 0, cv.width, cv.height);
+  const data = img.data;
+  const step = Math.max(1, Math.floor(S * 2)); // плотность частиц
+  const particles = [];
+  for (let y = 0; y < cv.height; y += step) {
+    for (let x = 0; x < cv.width; x += step) {
+      const i = (y * cv.width + x) * 4;
+      const a = data[i + 3];
+      if (a > 30) {
+        // пропускаем тёмный фон — рассыпаем только карточку и текст
+        const r = data[i], g = data[i+1], b = data[i+2];
+        const isBg = r < 40 && g < 60 && b < 70 && a > 200;
+        if (isBg) continue;
+        particles.push({
+          x: x / S, y: y / S,
+          vx: (Math.random() - 0.5) * 2.2,
+          vy: Math.random() * 1.5 - 1,
+          life: 1,
+          color: `rgb(${r},${g},${b})`
+        });
+      }
+    }
+  }
+  return particles;
+}
+
+let particles = [];
+let animating = false;
+let done = false;
+
+function animate() {
+  if (!animating) return;
+  ctx.save();
+  ctx.scale(S, S);
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#16242f';
+  ctx.fillRect(0, 0, W, H);
+  let alive = 0;
+  for (const p of particles) {
+    if (p.life <= 0) continue;
+    p.vy += 0.06;          // гравитация
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= 0.008;
+    alive++;
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, Math.max(1, S*0.6), Math.max(1, S*0.6));
+  }
+  ctx.restore();
+  if (alive > 0) {
+    requestAnimationFrame(animate);
+  } else {
+    animating = false;
+    // всё рассыпалось — плавно гасим и закрываем
+    if (tg) { tg.close(); }
+    else { ctx.clearRect(0,0,cv.width,cv.height); }
+  }
+}
+
+cv.addEventListener('pointerdown', () => {
+  if (animating || done) return;
+  animating = true;
+  done = true;
+  particles = collectParticles();
+  animate();
+});
+
+drawCard();
+</script>
+</body>
+</html>
